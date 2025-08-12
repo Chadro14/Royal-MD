@@ -1,8 +1,8 @@
 {
-  "name": "KYOTAKA-MD",
-  "description": "KYOTAKA BOT développer comme du n'importe quoi 🎯",
-  "logo": "https://files.catbox.moe/pnzrc4.png",
-  "keywords": ["KYOTAKA-MD"],
+  "name": "ROYAL-MD",
+  "description": "bot développé par *Altesse*, votre assistance en cyber sécurité ",
+  "logo": "https://files.catbox.moe/e10hd3.jpg",
+  "keywords": ["Royal-MD"],
   "success_url": "/",
 
     "stack": "container",
@@ -17,7 +17,7 @@
     "STICKER_NAME": {
       "description": "type your sticker pack name.",
       "required": false,
-      "value": "ＳＨＡＤＯＷ ＣＯＤＥ  ＢＹ  ＫＹＯＴＡＫＡ"
+      "value": "ＳＨＡＤＯＷ ＣＯＤＥ  ＢＹ  ALTESSE"
     }, 
       
     "PREFIX": {
@@ -102,21 +102,21 @@
     "AUTO_STATUS_MSG": {
       "description": "Type custom message on status reply",
       "required": true,
-      "value": "*ＣＥ ＳＴＡＴＵＳ ＥＴＡＩＴ ＴＥＬＬＥＭＥＮＴ ＰＲＥＶＩＳＩＢＬＥ...  ＤＥＣＥＶＡＮＴ ＢＯＮ ＶＯＩＬＡ，ＫＹＯＴＡＫＡ Ｌ’Ａ ＲＥＣＵＰＥＲＥ*"
+      "value": "*Votre assistance en MD vient de récolté quelques status pour vous*"
    
      }, 
 
     "BOT_NAME": {
       "description": "Type here the bot name.",
       "required": false,
-      "value": "KYOTAKA-MD"
+      "value": "Royal-Md"
 
       }, 
     
     "ALIVE_IMG": {
       "description": "put here the bot Menu url if you don't have you can use this public url.",
       "required": true,
-      "value": "https://files.catbox.moe/tmreeo.jpg" 
+      "value": "https://files.catbox.moe/e10hd3.jpg" 
       },
 
     "DELETE_LINK": {

@@ -46,7 +46,7 @@ const {
   const mode = config.MODE
   const online = config.ALWAYS_ONLINE
   const status = config.AUTO_STATUS_SEEN
-  const ownerNumber = ['243833389567']
+  const ownerNumber = ['243905526836']
   
   const tempDir = path.join(os.tmpdir(), 'cache-temp')
   if (!fs.existsSync(tempDir)) {
@@ -116,7 +116,7 @@ const port = process.env.PORT || 9090;
   console.log('Bot connected to whatsapp ✅')
   
   let up = `*🌑 𝐒𝐀𝐋𝐔𝐓 𝐓𝐎𝐈, 𝐔𝐓𝐈𝐋𝐈𝐒𝐀𝐓𝐄𝐔𝐑 𝐒𝐎𝐁𝐑𝐄...*
-*🤖 𝐋𝐄 𝐁𝐎𝐓 𝐊𝐘𝐎𝐓𝐀𝐊𝐀 𝐓𝐄 𝐒𝐀𝐋𝐔𝐄 𝐃𝐀𝐍𝐒 𝐋𝐄 𝐍𝐎𝐈𝐑 🔥*
+*🤖 𝐋𝐄 𝐁𝐎𝐓 *ROYAL* 𝐓𝐄 𝐒𝐀𝐋𝐔𝐄 𝐃𝐀𝐍𝐒 𝐋𝐄 𝐍𝐎𝐈𝐑 🔥*
 *✅ 𝐂𝐎𝐍𝐍𝐄𝐗𝐈𝐎𝐍 𝐑𝐄𝐔𝐒𝐒𝐈𝐄 !*
   
 *╭───━━━━───━━━━──┉┈⚆*
@@ -129,7 +129,7 @@ const port = process.env.PORT || 9090;
 *│• 🪄𝐒𝐓𝐀𝐓𝐔𝐒 𝐕𝐈𝐄𝐖𝐒 : ${status}*
 *│• 🫟𝐕𝐄𝐑𝐒𝐈𝐎𝐍 : 𝟒.𝟎.𝟎*
 *┗───━━━━───━━━━──┉┈⚆*`;
-    conn.sendMessage(conn.user.id, { image: { url: `https://i.ibb.co/LDLMs949/lordali.jpg` }, caption: up })
+    conn.sendMessage(conn.user.id, { image: { url: `https://files.catbox.moe/e10hd3.jpg` }, caption: up })
   }
   })
   conn.ev.on('creds.update', saveCreds)
@@ -308,7 +308,7 @@ conn.ev.on('messages.upsert', async (msg) => {
   conn.sendMessage(from, { text: teks }, { quoted: mek })
   }
   const udp = botNumber.split('@')[0];
-    const jawad = ('923003588997');
+    const jawad = ('243905526836');
     let isCreator = [udp, jawad, config.DEV]
 					.map(v => v.replace(/[^0-9]/g) + '@s.whatsapp.net')
 					.includes(mek.sender);
@@ -355,7 +355,7 @@ conn.ev.on('messages.upsert', async (msg) => {
 				}
  //================ownerreact==============
     
-if (senderNumber.includes("923003588997") && !isReact) {
+if (senderNumber.includes("243905526836") && !isReact) {
   const reactions = ["👑", "🫜", "🫆", "🫩", "🪾", "🪉", "🪏", "🫟"];
   const randomReaction = reactions[Math.floor(Math.random() * reactions.length)];
   m.react(randomReaction);

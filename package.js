@@ -1,12 +1,12 @@
 {
-  "name": "KYOTAKA-MD",
+  "name": "ROYAL MD",
   "version": "3.0.0",
-  "description": "KYOTAKA BOT développer comme du n'importe quoi 🎯",
+  "description": "l'instance dans l'ombre ",
   "main": "index.js",
   "scripts": {
-    "start": "pm2 start index.js --deep-monitoring --attach --name KYOTAKA-MD",
+    "start": "pm2 start index.js --deep-monitoring --attach --name Royal-MD",
     "stop": "pm2 stop KYOTAKA-MD",
-    "restart": "pm2 restart KYOTAKA-MD"
+    "restart": "pm2 restart Royal-MD"
   },
   "dependencies": {
     "@bochilteam/scraper": "3.0.0",

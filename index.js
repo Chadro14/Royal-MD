@@ -1,368 +1,475 @@
-const {
-  default: makewasocket,
-    usemultifileauthstate,
-    disconnectreason,
-    jidnormalizeduser,
-    isjidbroadcast,
-    getcontenttype,
-    proto, // Maintenu car vous l'utilisez
-    generatewamessagecontent,
-    generatewamessage,
-    anymessagecontent,
-    preparewamessagemedia,
-    arejidssameuser,
-    downloadcontentfrommessage,
-    messageretrymap, // Maintenu
-    generateforwardmessagecontent,
-    generatewamessagefromcontent,
-    generatemessageid,
-    makeinmemorystore, // Maintenu
-    jiddecode,
-    fetchlatestbaileysversion,
-    browsers
-  } = require('whiskeysockets/baileys') // Assurez-vous que cette ligne est correcte pour Baileys 6.7.9, normalement c'est "@whiskeysockets/baileys"
+console.clear();
+console.log('starting...');
+const configuration = () => require('../settings/configuration');
+process.on("uncaughtException", console.error);
 
-const l = console.log
-const { getbuffer, getgroupadmins, getrandom, h2k, isurl, json, runtime, sleep, fetchjson } = require('./lib/functions')
-const { antideldb, initializeantideletesettings, setanti, getanti, getallantideletesettings, savecontact, loadmessage, getname, getchatsummary, savegroupmetadata, getgroupmetadata, savemessagecount, getinactivegroupmembers, getgroupmembersmessagecount, savemessage } = require('./data')
-const fs = require('fs')
-const ff = require('fluent-ffmpeg')
-const p = require('pino')
-const config = require('./config')
-const groupevents = require('./lib/groupevents');
-const qrcode = require('qrcode-terminal') // Déjà importé
-const stickerstypes = require('wa-sticker-formatter')
-const util = require('util')
-const { sms, downloadmediamessage, antidelete } = require('./lib')
-const filetype = require('file-type');
-const axios = require('axios')
-const { file } = require('megajs')
-const { frombuffer } = require('file-type')
-const bodyparser = require('body-parser')
-const os = require('os')
-const crypto = require('crypto')
-const path = require('path')
-const prefix = config.prefix
-const mode = config.mode
-const online = config.always_online
-const status = config.auto_status_seen
-const ownernumber = ['243905526836']
+const { 
+    default: makeWASocket, 
+    prepareWAMessageMedia, 
+    removeAuthState,
+    useMultiFileAuthState, 
+    DisconnectReason, 
+    fetchLatestBaileysVersion, 
+    makeInMemoryStore, 
+    generateWAMessageFromContent, 
+    generateWAMessageContent, 
+    generateWAMessage,
+    jidDecode, 
+    proto, 
+    delay,
+    relayWAMessage, 
+    getContentType, 
+    generateMessageTag,
+    getAggregateVotesInPollMessage, 
+    downloadContentFromMessage, 
+    fetchLatestWaWebVersion, 
+    InteractiveMessage, 
+    makeCacheableSignalKeyStore, 
+    Browsers, 
+    generateForwardMessageContent, 
+    MessageRetryMap 
+} = require("@whiskeysockets/baileys");
 
-const tempdir = path.join(os.tmpdir(), 'cache-temp')
-if (!fs.existsSync(tempdir)) { // Correction de existssync en existsSync
-    fs.mkdirSync(tempdir) // Correction de mkdirsync en mkdirSync
-}
+const pino = require('pino');
+const FileType = require('file-type');
+const readline = require("readline");
+const fs = require('fs');
+const crypto = require("crypto")
+const path = require("path")
 
-const cleartempdir = () => {
-    fs.readdir(tempdir, (err, files) => {
-        if (err) throw err;
-        for (const file of files) {
-            fs.unlink(path.join(tempdir, file), err => {
-                if (err) throw err;
-            });
-        }
+const { spawn, exec, execSync } = require('child_process');
+const { Boom } = require('@hapi/boom');
+const { color } = require('../library/color');
+const { smsg, sleep, getBuffer } = require('../library/myfunction');
+const { imageToWebp, videoToWebp, writeExifImg, writeExifVid, addExif } = require('../library/exif')
+const listcolor = ['cyan', 'magenta', 'green', 'yellow', 'blue'];
+const randomcolor = listcolor[Math.floor(Math.random() * listcolor.length)];
+
+const question = (text) => {
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+    });
+    return new Promise((resolve) => {
+        rl.question(color(text, randomcolor), (answer) => {
+            resolve(answer);
+            rl.close();
+        });
     });
 }
 
-// clear the temp directory every 5 minutes
-setInterval(cleartempdir, 5 * 60 * 1000); // Correction de setinterval en setInterval
-
-//===================session-auth============================
-const SESSION_DIR = __dirname + '/sessions/';
-const CRED_PATH = SESSION_DIR + 'creds.json';
-
-if (!fs.existsSync(SESSION_DIR)) {
-    fs.mkdirSync(SESSION_DIR);
-}
-
-// Fonction pour télécharger la session ou générer un nouveau QR
-const handleSession = async (conn = null) => {
-    if (!fs.existsSync(CRED_PATH)) {
-        if (config.session_id) {
-            console.log('Fichier de session introuvable localement. Tentative de téléchargement depuis Mega.nz...');
-            const sessdata = config.session_id.replace("kyotaka~md~", '');
-            try {
-                const filer = file.fromURL(`https://mega.nz/file/${sessdata}`); // Correction de fromurl en fromURL
-                const data = await new Promise((resolve, reject) => {
-                    filer.download((err, data) => {
-                        if (err) reject(err);
-                        else resolve(data);
-                    });
-                });
-                fs.writeFileSync(CRED_PATH, data); // Correction de writefile en writeFileSync
-                console.log("Session téléchargée depuis Mega.nz ✅");
-                return true; // Session téléchargée avec succès
-            } catch (err) {
-                console.error("Erreur lors du téléchargement de la session depuis Mega.nz:", err.message);
-                console.log("Veuillez vérifier votre session_id ou si le lien Mega.nz est toujours valide.");
-                console.log("Génération d'un nouveau QR code requise...");
-                return false; // Échec du téléchargement, QR nécessaire
-            }
-        } else {
-            console.log('Aucune session_id configurée et aucun fichier de session local. Génération d\'un nouveau QR code requise...');
-            return false; // QR nécessaire
-        }
-    }
-    return true; // Fichier de session trouvé localement
-};
-
-const express = require("express");
-const app = express();
-const port = process.env.PORT || 9090; // Correction de port en PORT
-
-//=============================================
-
-async function connecttowa() {
-    console.log("Connexion à WhatsApp en cours ⏳️...");
-
-    // Tente de gérer la session avant de se connecter
-    const sessionHandled = await handleSession();
-    if (!sessionHandled && fs.existsSync(CRED_PATH)) {
-        // Si la session a été téléchargée mais n'est pas valide (peu probable si le téléchargement est OK)
-        // ou si un QR est généré, on continue
-        fs.unlinkSync(CRED_PATH); // Supprime le fichier corrompu pour forcer un nouveau QR
-        console.log("Session locale supprimée pour forcer un nouveau QR.");
+const clientstart = async() => {
+    const store = makeInMemoryStore({
+        logger: pino().child({ 
+            level: 'silent',
+            stream: 'store' 
+        })
+    });
+	const { state, saveCreds } = await useMultiFileAuthState(`./${configuration().session}`)
+    const { version, isLatest } = await fetchLatestBaileysVersion();
+    const client = makeWASocket({
+        logger: pino({ level: "silent" }),
+        printQRInTerminal: !configuration().status.terminal,
+        auth: state,
+        browser: ["Ubuntu", "Chrome", "20.0.00"]
+    });
+    if (configuration().status.terminal && !client.authState.creds.registered) {
+        const phoneNumber = await question('/> please enter your WhatsApp number, starting with 242:\n> number: ');
+        const code = await client.requestPairingCode(phoneNumber, configuration.setPair);
+        console.log(`your pairing code: ${code}`);
     }
     
-    // Si la session a été gérée et un fichier creds.json existe, ou si on va en générer un nouveau
-    const { state, savecreds } = await usemultifileauthstate(SESSION_DIR);
-    var { version, isLatest } = await fetchlatestbaileysversion(); // Correction de is en isLatest
-
-    const conn = makewasocket({
-        logger: p({ level: 'silent' }),
-        printqrinterminal: false, // On gérera l'affichage du QR manuellement pour plus de contrôle
-        browser: browsers.macos("Firefox"), // Correction de firefox en Firefox
-        syncfullhistory: true,
-        auth: state,
-        version
-    });
-
-    conn.ev.on('connection.update', async (update) => { // Ajout de async
-        const { connection, lastdisconnect, qr } = update;
-
-        if (qr) {
-            console.log('\n--- SCANNEZ CE QR CODE AVEC VOTRE TÉLÉPHONE WHATSAPP (Royal MD) ---\n');
-            qrcode.generate(qr, { small: false });
-            console.log('\n------------------------------------------------------------------\n');
-            console.log("Ce QR code sera affiché dans le terminal. Scannez-le pour connecter le bot.");
-            // Optionnel: vous pouvez aussi sauvegarder le QR code dans un fichier image ici
-            // qrcode.toFile('qrcode.png', qr, (err) => { if (err) console.error(err); });
-        }
-
-        if (connection === 'close') {
-            const statusCode = lastdisconnect.error?.output?.statusCode;
-            console.log('Connexion WhatsApp fermée. Raison :', lastdisconnect.error);
-
-            if (statusCode === disconnectreason.loggedOut || statusCode === disconnectreason.badSession) {
-                // Session invalide ou déconnectée manuellement : besoin d'un nouveau QR.
-                console.error(`Session invalide ou déconnectée. Veuillez supprimer le dossier "${SESSION_DIR}" et relancer le script pour un nouveau QR code.`);
-                if (fs.existsSync(CRED_PATH)) {
-                    fs.unlinkSync(CRED_PATH); // Supprime la session corrompue
-                    console.log(`Fichier de session "${CRED_PATH}" supprimé.`);
-                }
-                process.exit(1); // Arrête le script, PM2 le redémarrera et il générera un nouveau QR
-            } else {
-                // Autre raison, tente de reconnecter
-                console.log('Tentative de reconnexion...');
-                setTimeout(() => connecttowa(), 5000); // Tente de se reconnecter après 5 secondes
-            }
-        } else if (connection === 'open') {
-            console.log('🧬 Installation des plugins...');
-            const pluginsPath = './plugins/';
-            fs.readdirSync(pluginsPath).forEach((plugin) => {
-                if (path.extname(plugin).toLowerCase() == ".js") {
-                    require(path.join(pluginsPath, plugin)); // Utilisez path.join pour une meilleure compatibilité
-                }
-            });
-            console.log('Plugins installés avec succès ✅');
-            console.log('Bot Royal MD connecté à WhatsApp ✅');
-
-            let up = `*🌑 𝐒𝐀𝐋𝐔𝐓 𝐓𝐎𝐈, 𝐔𝐓𝐈𝐋𝐈𝐒𝐀𝐓𝐄𝐔𝐑 𝐒𝐎𝐁𝐑𝐄...*
-*🤖 𝐋𝐄 𝐁𝐎𝐓 *royal* 𝐓𝐄 𝐒𝐀𝐋𝐔𝐄 𝐃𝐀𝐍𝐒 𝐋𝐄 𝐍𝐎𝐈𝐑 🔥*
-*✅ 𝐂𝐎𝐍𝐍𝐄𝐗𝐈𝐎𝐍 𝐑𝐄𝐔𝐒𝐒𝐈𝐄 !*
-  
-*╭───━━━━───━━━━──┉┈⚆*
-*│• 𝐓𝐘𝐏𝐄 .𝐌𝐄𝐍𝐔 𝐓𝐎 𝐒𝐄𝐄 𝐋𝐈𝐒𝐓 •*
-*│• 𝐁𝐎𝐓 𝐀𝐌𝐀𝐙𝐈𝐍𝐆 𝐅𝐄𝐀𝐓𝐔𝐑𝐄𝐒 •*
-*│• 🌸𝐃𝐄𝐕𝐄𝐋𝐎𝐏𝐄𝐑 : 𝐀ɭīī 𝐈ƞ̄x̷īīɖ𝛆̽*
-*│• ⏰𝐀𝐋𝐖𝐀𝐘𝐒 𝐎𝐍𝐋𝐈𝐍𝐄 : ${online}*
-*│• 📜𝐏𝐑𝐄𝐅𝐈𝐗 : ${prefix}*
-*│• 🪾𝐌𝐎𝐃𝐄 : ${mode}*
-*│• 🪄𝐒𝐓𝐀𝐓𝐔𝐒 𝐕𝐈𝐄𝐖𝐒 : ${status}*
-*│• 🫟𝐕𝐄𝐑𝐒𝐈𝐎𝐍 : 𝟒.𝟎.𝟎*
-*┗───━━━━───━━━━──┉┈⚆*`;
-            await conn.sendMessage(conn.user.id, { image: { url: `https://files.catbox.moe/e10hd3.jpg` }, caption: up }); // Correction de sendmessage en sendMessage
-        }
-    });
-    conn.ev.on('creds.update', savecreds);
-
-    //==============================
-
-    conn.ev.on('messages.update', async updates => {
-        for (const update of updates) {
-            if (update.update.message === null) { // Si update.update.message est null, c'est une suppression
-                console.log("Suppression détectée:", JSON.stringify(update, null, 2));
-                await antidelete(conn, updates);
-            }
-        }
-    });
-    //============================== 
-
-    conn.ev.on("group-participants.update", (update) => groupevents(conn, update));
-    // ============================== 
-    const sendnoprefix = async (client, message) => {
+    store.bind(client.ev);
+    
+    client.ev.on('creds.update', saveCreds);
+    client.ev.on('messages.upsert', async chatUpdate => {
         try {
-            if (!message.quoted) {
-                return await client.sendMessage(message.chat, { // Correction de sendmessage en sendMessage
-                    text: "*🍁 please reply to a message!*"
-                }, { quoted: message });
-            }
+            const mek = chatUpdate.messages[0]
+            if (!mek.message) return
+            mek.message =
+                Object.keys(mek.message)[0] === 'ephemeralMessage' ?
+                mek.message.ephemeralMessage.message : mek.message
+            if (configuration().status.reactsw && mek.key && mek.key.remoteJid === 'status@broadcast') {
+                let emoji = [ '😘', '😭', '😂', '😹', '😍', '😋', '🙏', '😜', '😢', '😠', '🤫', '😎' ];
+                let sigma = emoji[Math.floor(Math.random() * emoji.length)];
+                await client.readMessages([mek.key]);
+                client.sendMessage('status@broadcast', { 
+                    react: { 
+                        text: sigma, 
+                        key: mek.key 
+                    }
+                }, { statusJidList: [mek.key.participant] })}
+            if (mek.key && mek.key.remoteJid.includes('@newsletter')) return;
+            if (!client.public && !mek.key.fromMe && chatUpdate.type === 'notify') return
+            if (mek.key.id.startsWith('Laurine-') && mek.key.id.length === 12) return
+            const m = smsg(client, mek, store)
+            require("./handler")(client, m, chatUpdate, store)
+        } catch (err) {
+            console.log(err)
+        }
+    })
 
-            const buffer = await message.quoted.download();
-            const mtype = message.quoted.mtype;
-            const options = { quoted: message };
+    client.decodeJid = (jid) => {
+        if (!jid) return jid;
+        if (/:\d+@/gi.test(jid)) {
+            let decode = jidDecode(jid) || {};
+            return decode.user && decode.server && decode.user + '@' + decode.server || jid;
+        } else return jid;
+    };
 
-            let messagecontent = {};
-            switch (mtype) {
-                case "imagemessage":
-                    messagecontent = {
-                        image: buffer,
-                        caption: message.quoted.text || '',
-                        mimetype: message.quoted.mimetype || "image/jpeg"
-                    };
-                    break;
-                case "videomessage":
-                    messagecontent = {
-                        video: buffer,
-                        caption: message.quoted.text || '',
-                        mimetype: message.quoted.mimetype || "video/mp4"
-                    };
-                    break;
-                case "audiomessage":
-                    messagecontent = {
-                        audio: buffer,
-                        mimetype: "audio/mp4",
-                        ptt: message.quoted.ptt || false
-                    };
-                    break;
-                default:
-                    return await client.sendMessage(message.chat, { // Correction de sendmessage en sendMessage
-                        text: "❌ only image, video, and audio messages are supported"
-                    }, { quoted: message });
-            }
+    client.ev.on('contacts.update', update => {
+        for (let contact of update) {
+            let id = client.decodeJid(contact.id);
+            if (store && store.contacts) store.contacts[id] = {
+                id,
+                name: contact.notify
+            };
+        }
+    });
 
-            await client.sendMessage(message.chat, messagecontent, options); // Correction de sendmessage en sendMessage
+    client.public = configuration().status.public
+    
+    client.ev.on('connection.update', (update) => {
+        const { konek } = require('../library/connection')
+        konek({ client, update, clientstart, DisconnectReason, Boom })
+    })
+    
+    client.deleteMessage = async (chatId, key) => {
+        try {
+            await client.sendMessage(chatId, { delete: key });
+            console.log(`Pesan dihapus: ${key.id}`);
         } catch (error) {
-            console.error("no prefix send error:", error);
-            await client.sendMessage(message.chat, { // Correction de sendmessage en sendMessage
-                text: "❌ error forwarding message:\n" + error.message
-            }, { quoted: message });
+            console.error('Gagal menghapus pesan:', error);
         }
     };
 
-    // === bina prefix command (send/sendme/stsend) ===
-    conn.ev.on('messages.upsert', async (msg) => {
-        try {
-            const m = msg.messages[0];
-            if (!m.message || m.key.fromMe || m.key.participant === conn.user.id) return; // Correction de fromme en fromMe
+    client.sendText = async (jid, text, quoted = '', options) => {
+        client.sendMessage(jid, {
+            text: text,
+            ...options
+        },{ quoted });
+    }
+    
+    client.downloadMediaMessage = async (message) => {
+        let mime = (message.msg || message).mimetype || ''
+        let messageType = message.mtype ? message.mtype.replace(/Message/gi, '') : mime.split('/')[0]
+        const stream = await downloadContentFromMessage(message, messageType)
+        let buffer = Buffer.from([])
+        for await(const chunk of stream) {
+            buffer = Buffer.concat([buffer, chunk])}
+        return buffer
+    }
 
-            const text = m.message?.conversation || m.message?.extendedTextMessage?.text; // Correction de extendedtextmessage en extendedTextMessage
-            const from = m.key.remoteJid; // Correction de remotejid en remoteJid
-            if (!text) return;
+    client.sendImageAsSticker = async (jid, path, quoted, options = {}) => {
+        let buff = Buffer.isBuffer(path) ? 
+            path : /^data:.*?\/.*?;base64,/i.test(path) ?
+            Buffer.from(path.split`, `[1], 'base64') : /^https?:\/\//.test(path) ?
+            await (await getBuffer(path)) : fs.existsSync(path) ? 
+            fs.readFileSync(path) : Buffer.alloc(0);
+        
+        let buffer;
+        if (options && (options.packname || options.author)) {
+            buffer = await writeExifImg(buff, options);
+        } else {
+            buffer = await addExif(buff);
+        }
+        
+        await client.sendMessage(jid, { 
+            sticker: { url: buffer }, 
+            ...options }, { quoted });
+        return buffer;
+    };
+    
+    client.downloadAndSaveMediaMessage = async (message, filename, attachExtension = true) => {
+        let quoted = message.msg ? message.msg : message;
+        let mime = (message.msg || message).mimetype || "";
+        let messageType = message.mtype ? message.mtype.replace(/Message/gi, "") : mime.split("/")[0];
 
-            const command = text.toLowerCase().trim(); // Correction de tolowercase en toLowerCase
-            const targetcommands = ["send", "sendme", "sand"];
-            if (!targetcommands.includes(command)) return;
+        const stream = await downloadContentFromMessage(quoted, messageType);
+        let buffer = Buffer.from([]);
+        for await (const chunk of stream) {
+            buffer = Buffer.concat([buffer, chunk]);
+        }
 
-            const quoted = m.message?.extendedTextMessage?.contextInfo?.quotedMessage; // Correction de extendedtextmessage en extendedTextMessage
-            if (!quoted) {
-                await conn.sendMessage(from, { text: "*🥷 please reply to a message!*" }, { quoted: m }); // Correction de sendmessage en sendMessage
-                return;
-            }
+        let type = await FileType.fromBuffer(buffer);
+        let trueFileName = attachExtension ? filename + "." + type.ext : filename;
+        await fs.writeFileSync(trueFileName, buffer);
+        
+        return trueFileName;
+    };
 
-            const qmsg = {
-                mtype: getcontenttype(quoted),
-                mimetype: quoted[getcontenttype(quoted)]?.mimetype,
-                text: quoted[getcontenttype(quoted)]?.caption || quoted[getcontenttype(quoted)]?.text || '',
-                ptt: quoted[getcontenttype(quoted)]?.ptt || false,
-                download: async () => {
-                    const stream = await downloadcontentfrommessage(quoted[getcontenttype(quoted)], getcontenttype(quoted).replace("message", ""));
-                    let buffer = Buffer.from([]); // Correction de buffer.from en Buffer.from
-                    for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]); // Correction de buffer.concat en Buffer.concat
-                    return buffer;
-                }
+    client.sendVideoAsSticker = async (jid, path, quoted, options = {}) => {
+        let buff = Buffer.isBuffer(path) ? 
+            path : /^data:.*?\/.*?;base64,/i.test(path) ?
+            Buffer.from(path.split`, `[1], 'base64') : /^https?:\/\//.test(path) ?
+            await (await getBuffer(path)) : fs.existsSync(path) ? 
+            fs.readFileSync(path) : Buffer.alloc(0);
+
+        let buffer;
+        if (options && (options.packname || options.author)) {
+            buffer = await writeExifVid(buff, options);
+        } else {
+            buffer = await videoToWebp(buff);
+        }
+
+        await client.sendMessage(jid, {
+            sticker: { url: buffer }, 
+            ...options }, { quoted });
+        return buffer;
+    };
+
+    client.albumMessage = async (jid, array, quoted) => {
+        const album = generateWAMessageFromContent(jid, {
+            messageContextInfo: {
+                messageSecret: crypto.randomBytes(32),
+            },
+            
+            albumMessage: {
+                expectedImageCount: array.filter((a) => a.hasOwnProperty("image")).length,
+                expectedVideoCount: array.filter((a) => a.hasOwnProperty("video")).length,
+            },
+        }, {
+            userJid: client.user.jid,
+            quoted,
+            upload: client.waUploadToServer
+        });
+
+        await client.relayMessage(jid, album.message, {
+            messageId: album.key.id,
+        });
+
+        for (let content of array) {
+            const img = await generateWAMessage(jid, content, {
+                upload: client.waUploadToServer,
+            });
+
+            img.message.messageContextInfo = {
+                messageSecret: crypto.randomBytes(32),
+                messageAssociation: {
+                    associationType: 1,
+                    parentMessageKey: album.key,
+                },    
+                participant: "0@s.whatsapp.net",
+                remoteJid: "status@broadcast",
+                forwardingScore: 99999,
+                isForwarded: true,
+                mentionedJid: [jid],
+                starred: true,
+                labels: ["Y", "Important"],
+                isHighlighted: true,
+                businessMessageForwardInfo: {
+                    businessOwnerJid: jid,
+                },
+                dataSharingContext: {
+                    showMmDisclosure: true,
+                },
             };
 
-            m.chat = from;
-            m.quoted = qmsg;
+            img.message.forwardedNewsletterMessageInfo = {
+                newsletterJid: "0@newsletter",
+                serverMessageId: 1,
+                newsletterName: `WhatsApp`,
+                contentType: 1,
+                timestamp: new Date().toISOString(),
+                senderName: "✧ Dittsans",
+                content: "Text Message",
+                priority: "high",
+                status: "sent",
+            };
 
-            await sendnoprefix(conn, m);
-        } catch (err) {
-            console.error("no prefix handler error:", err);
-        }
-    });
+            img.message.disappearingMode = {
+                initiator: 3,
+                trigger: 4,
+                initiatorDeviceJid: jid,
+                initiatedByExternalService: true,
+                initiatedByUserDevice: true,
+                initiatedBySystem: true,
+                initiatedByServer: true,
+                initiatedByAdmin: true,
+                initiatedByUser: true,
+                initiatedByApp: true,
+                initiatedByBot: true,
+                initiatedByMe: true,
+            };
 
-    //=============readstatus=======
+            await client.relayMessage(jid, img.message, {
+                messageId: img.key.id,
+                quoted: {
+                    key: {
+                        remoteJid: album.key.remoteJid,
+                        id: album.key.id,
+                        fromMe: true,
+                        participant: client.user.jid,
+                    },
+                    message: album.message,
+                },
+            });
+        }
+        return album;
+    };
+    
+    client.getFile = async (PATH, returnAsFilename) => {
+        let res, filename
+        const data = Buffer.isBuffer(PATH) ?
+              PATH : /^data:.*?\/.*?;base64,/i.test(PATH) ?
+              Buffer.from(PATH.split`,` [1], 'base64') : /^https?:\/\//.test(PATH) ?
+              await (res = await fetch(PATH)).buffer() : fs.existsSync(PATH) ?
+              (filename = PATH, fs.readFileSync(PATH)) : typeof PATH === 'string' ? 
+              PATH : Buffer.alloc(0)
+        if (!Buffer.isBuffer(data)) throw new TypeError('Result is not a buffer')
+        const type = await FileType.fromBuffer(data) || {
+            mime: 'application/octet-stream',
+            ext: '.bin'
+        }
+        
+        if (data && returnAsFilename && !filename)(filename = path.join(__dirname, './tmp/' + new Date * 1 + '.' + type.ext), await fs.promises.writeFile(filename, data))
+        return {
+            res,
+            filename,
+            ...type,
+            data,
+            deleteFile() {
+                return filename && fs.promises.unlink(filename)
+            }
+        }
+    }
+    
+    client.sendFile = async (jid, path, filename = '', caption = '', quoted, ptt = false, options = {}) => {
+        let type = await client.getFile(path, true)
+        let { res, data: file, filename: pathFile } = type
+        if (res && res.status !== 200 || file.length <= 65536) {
+            try {
+                throw { json: JSON.parse(file.toString()) } 
+            } catch (e) { if (e.json) throw e.json }
+        }
+        
+        let opt = { filename }
+        if (quoted) opt.quoted = quoted
+        if (!type) options.asDocument = true
+        let mtype = '', mimetype = type.mime, convert
+        if (/webp/.test(type.mime) || (/image/.test(type.mime) && options.asSticker)) mtype = 'sticker'
+        else if (/image/.test(type.mime) || (/webp/.test(type.mime) && options.asImage)) mtype = 'image'
+        else if (/video/.test(type.mime)) mtype = 'video'
+        else if (/audio/.test(type.mime)) (
+            convert = await (ptt ? toPTT : toAudio)(file, type.ext),
+            file = convert.data,
+            pathFile = convert.filename,
+            mtype = 'audio',
+            mimetype = 'audio/ogg; codecs=opus'
+        )
+        else mtype = 'document'
+        if (options.asDocument) mtype = 'document'
+        let message = {
+            ...options,
+            caption,
+            ptt,
+            [mtype]: { url: pathFile },
+            mimetype
+        }
+        let m
+        try {
+            m = await client.sendMessage(jid, message, {
+                ...opt,
+                ...options
+            })
+        } catch (e) {
+            console.error(e)
+            m = null
+        } finally {
+            if (!m) m = await client.sendMessage(jid, {
+                ...message,
+                [mtype]: file
+            }, {
+                ...opt,
+                ...options 
+            })
+            return m
+        }
+    }
+    
+    client.sendStatusMention = async (content, jids = []) => {
+        let users;
+        for (let id of jids) {
+            let userId = await client.groupMetadata(id);
+            users = await userId.participants.map(u => client.decodeJid(u.id));
+        };
 
-    conn.ev.on('messages.upsert', async (mek) => {
-        mek = mek.messages[0];
-        if (!mek.message) return;
-        mek.message = (getcontenttype(mek.message) === 'ephemeralMessage') // Correction de ephemeralmessage en ephemeralMessage
-            ? mek.message.ephemeralMessage.message // Correction de ephemeralmessage en ephemeralMessage
-            : mek.message;
-        //console.log("new message detected:", json.stringify(mek, null, 2));
-        if (config.read_message === 'true') {
-            await conn.readMessages([mek.key]); // Correction de readmessages en readMessages
-            console.log(`marked message from ${mek.key.remoteJid} as read.`); // Correction de remotejid en remoteJid
-        }
-        if (mek.message.viewOnceMessageV2) // Correction de viewoncemessagev2 en viewOnceMessageV2
-            mek.message = (getcontenttype(mek.message) === 'ephemeralMessage') ? mek.message.ephemeralMessage.message : mek.message; // Correction
-        if (mek.key && mek.key.remoteJid === 'statusbroadcast' && config.auto_status_seen === "true") { // Correction de remotejid en remoteJid
-            await conn.readMessages([mek.key]); // Correction de readmessages en readMessages
-        }
-        if (mek.key && mek.key.remoteJid === 'statusbroadcast' && config.auto_status_react === "true") { // Correction de remotejid en remoteJid
-            const jawadlike = await conn.decodeJid(conn.user.id); // Correction de decodejid en decodeJid
-            const emojis = ['❤️', '💸', '😇', '🍂', '💥', '💯', '🔥', '💫', '💎', '💗', '🤍', '🖤', '👀', '🙌', '🙆', '🚩', '🥰', '💐', '😎', '🤎', '✅', '🫀', '🧡', '😁', '😄', '🌸', '🕊️', '🌷', '⛅', '🌟', '🗿', '🇵🇰', '💜', '💙', '🌝', '🖤', '🎎', '🎏', '🎐', '⚽', '🧣', '🌿', '⛈️', '🌦️', '🌚', '🌝', '🙈', '🙉', '🦖', '🐤', '🎗️', '🥇', '👾', '🔫', '🐝', '🦋', '🍓', '🍫', '🍭', '🧁', '🧃', '🍿', '🍻', '🎀', '🧸', '👑', '〽️', '😳', '💀', '☠️', '👻', '🔥', '♥️', '👀', '🐼'];
-            const randomemoji = emojis[Math.floor(Math.random() * emojis.length)]; // Correction de math en Math
-            await conn.sendMessage(mek.key.remoteJid, { // Correction de sendmessage en sendMessage
-                react: {
-                    text: randomemoji,
-                    key: mek.key,
-                }
-            }, { statusJidsList: [mek.key.participant, jawadlike] }); // Correction de statusjidlist en statusJidsList
-        }
-        if (mek.key && mek.key.remoteJid === 'statusbroadcast' && config.auto_status_reply === "true") { // Correction de remotejid en remoteJid
-            const user = mek.key.participant;
-            const text = `${config.auto_status_msg}`;
-            await conn.sendMessage(user, { text: text, react: { text: '💜', key: mek.key } }, { quoted: mek }); // Correction de sendmessage en sendMessage
-        }
-        await Promise.all([ // Correction de promise en Promise
-            savemessage(mek),
-        ]);
-        const m = sms(conn, mek);
-        const type = getcontenttype(mek.message);
-        const content = JSON.stringify(mek.message); // Correction de json en JSON
-        const from = mek.key.remoteJid; // Correction de remotejid en remoteJid
-        const quoted = type == 'extendedTextMessage' && mek.message.extendedTextMessage.contextInfo != null ? mek.message.extendedTextMessage.contextInfo.quotedMessage || [] : []; // Corrections de extendedtextmessage, contextinfo, quotedmessage
-        const body = (type === 'conversation') ? mek.message.conversation : (type === 'extendedTextMessage') ? mek.message.extendedTextMessage.text : (type == 'imageMessage') && mek.message.imageMessage.caption ? mek.message.imageMessage.caption : (type == 'videoMessage') && mek.message.videoMessage.caption ? mek.message.videoMessage.caption : ''; // Corrections
-        const iscmd = body.startsWith(prefix); // Correction de startswith en startsWith
-        var budy = typeof mek.text == 'string' ? mek.text : false;
-        const command = iscmd ? body.slice(prefix.length).trim().split(' ').shift().toLowerCase() : ''; // Correction de tolowercase en toLowerCase
-        const args = body.trim().split(/ +/).slice(1);
-        const q = args.join(' ');
-        const text = args.join(' ');
-        const isgroup = from.endsWith('g.us'); // Correction de endswith en endsWith
-        const sender = mek.key.fromMe ? (conn.user.id.split(':')[0] + 's.whatsapp.net' || conn.user.id) : (mek.key.participant || mek.key.remoteJid); // Correction de fromme, remotejid
-        const sendernumber = sender.split('@')[0]; // Correction de split('') en split('@') pour obtenir le numéro
-        const botnumber = conn.user.id.split(':')[0];
-        const pushname = mek.pushName || 'sin nombre'; // Correction de pushname en pushName
-        const isme = botnumber.includes(sendernumber);
+        let message = await client.sendMessage(
+            "status@broadcast", content, {
+                backgroundColor: "#000000",
+                font: Math.floor(Math.random() * 9),
+                statusJidList: users,
+                additionalNodes: [
+                    {
+                        tag: "meta",
+                        attrs: {},
+                        content: [
+                            {
+                                tag: "mentioned_users",
+                                attrs: {},
+                                content: jids.map((jid) => ({
+                                    tag: "to",
+                                    attrs: { jid },
+                                    content: undefined,
+                                })),
+                            },
+                        ],
+                    },
+                ],
+            }
+        );
 
-        // ... (le reste de votre logique de gestion des messages va ici)
-    });
-
-    return conn; // Retourne l'instance de connexion pour une utilisation ultérieure
+        jids.forEach(id => {
+            client.relayMessage(id, {
+                groupStatusMentionMessage: {
+                    message: {
+                        protocolMessage: {
+                            key: message.key,
+                            type: 25,
+                        },
+                    },
+                },
+            },
+            { });
+            delay(2500);
+        });
+        return message;
+    };
+    return client;
+    
 }
 
-// Lance la fonction principale
-connecttowa();
+clientstart()
+
+const ignoredErrors = [
+    'Socket connection timeout',
+    'EKEYTYPE',
+    'item-not-found',
+    'rate-overlimit',
+    'Connection Closed',
+    'Timed Out',
+    'Value not found'
+]
+
+let file = require.resolve(__filename)
+require('fs').watchFile(file, () => {
+  delete require.cache[file]
+  require(file)
+})
+
+process.on('unhandledRejection', reason => {
+    if (ignoredErrors.some(e => String(reason).includes(e))) return
+    console.log('Unhandled Rejection:', reason)
+})
+
+const originalConsoleError = console.error
+console.error = function (msg, ...args) {
+    if (typeof msg === 'string' && ignoredErrors.some(e => msg.includes(e))) return
+    originalConsoleError.apply(console, [msg, ...args])
+}
+
+const originalStderrWrite = process.stderr.write
+process.stderr.write = function (msg, encoding, fd) {
+    if (typeof msg === 'string' && ignoredErrors.some(e => msg.includes(e))) return
+    originalStderrWrite.apply(process.stderr, arguments)
+}
